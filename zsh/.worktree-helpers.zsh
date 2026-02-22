@@ -5,7 +5,7 @@
 # A set of shell functions for managing git worktrees with bare repositories.
 #
 # Directory Structure:
-#   $CODE_DIR/              (~//code)
+#   $CODE_DIR/              (~/code)
 #     .bare/                Bare repositories live here
 #       api.git/
 #       web.git/
@@ -29,7 +29,7 @@
 #
 # =============================================================================
 
-export CODE_DIR="$HOME/code"
+export CODE_DIR="${CODE_DIR:-$HOME/code}"
 export BARE_DIR="$CODE_DIR/.bare"
 
 # -----------------------------------------------------------------------------
@@ -80,7 +80,11 @@ _wt_sorted_list() {
   local bare_repo="$1"
   git -C "$bare_repo" worktree list | grep -v '(bare)$' | while IFS= read -r line; do
     local dir=$(echo "$line" | awk '{print $1}')
-    printf '%s\t%s\n' "$(stat -f %B "$dir" 2>/dev/null || echo 0)" "$line"
+    if [[ "$(uname)" == "Darwin" ]]; then
+      printf '%s\t%s\n' "$(stat -f %B "$dir" 2>/dev/null || echo 0)" "$line"
+    else
+      printf '%s\t%s\n' "$(stat -c %W "$dir" 2>/dev/null || echo 0)" "$line"
+    fi
   done | sort -rn | cut -f2-
 }
 
@@ -173,9 +177,6 @@ HOOK
 _wt_add() {
   local repo="$1"
   local branch="$2"
-  local bare_repo="$BARE_DIR/${repo}.git"
-  local base="${3:-$(_wt_default_branch "$bare_repo")}"
-  local worktree_path="$CODE_DIR/${repo}/${branch}"
 
   if [[ -z "$repo" || -z "$branch" ]]; then
     echo "Usage: wt add <repo> <branch> [base]"
@@ -185,11 +186,22 @@ _wt_add() {
     return 1
   fi
 
+  local bare_repo="$BARE_DIR/${repo}.git"
+  local worktree_path="$CODE_DIR/${repo}/${branch}"
+
   if [[ ! -d "$bare_repo" ]]; then
     echo "Error: Bare repo not found at $bare_repo"
     echo "Run: wt bare <url> $repo"
     return 1
   fi
+
+  if [[ -d "$worktree_path" ]]; then
+    echo "Error: Worktree already exists at $worktree_path"
+    echo "To switch to it: cd $worktree_path"
+    return 1
+  fi
+
+  local base="${3:-$(_wt_default_branch "$bare_repo")}"
 
   git -C "$bare_repo" fetch origin
 
@@ -274,13 +286,16 @@ _wt_rm() {
 
       for b in "${branches[@]}"; do
         local wt_path="$CODE_DIR/${repo}/${b}"
-        echo "\033[1;33mDeleting ${b} ...\033[0m"
+        print -P "%F{yellow}Deleting ${b} ...%f"
         if [[ "$force" == "-f" ]]; then
           git -C "$bare_repo" worktree remove --force "$wt_path"
+          git -C "$bare_repo" branch -D "$b" 2>/dev/null
         else
-          git -C "$bare_repo" worktree remove "$wt_path"
+          git -C "$bare_repo" worktree remove "$wt_path" || continue
+          if ! git -C "$bare_repo" branch -d "$b" 2>/dev/null; then
+            echo "Warning: branch '$b' has unmerged changes. Use -f to force delete."
+          fi
         fi
-        git -C "$bare_repo" branch -D "$b" 2>/dev/null
       done
       return 0
     else
@@ -297,15 +312,17 @@ _wt_rm() {
 
   local worktree_path="$CODE_DIR/${repo}/${branch}"
 
-  echo "\033[1;33mDeleting ${branch} ...\033[0m"
+  print -P "%F{yellow}Deleting ${branch} ...%f"
 
   if [[ "$force" == "-f" ]]; then
     git -C "$bare_repo" worktree remove --force "$worktree_path"
+    git -C "$bare_repo" branch -D "$branch" 2>/dev/null
   else
-    git -C "$bare_repo" worktree remove "$worktree_path"
+    git -C "$bare_repo" worktree remove "$worktree_path" || return 1
+    if ! git -C "$bare_repo" branch -d "$branch" 2>/dev/null; then
+      echo "Warning: branch '$branch' has unmerged changes. Use -f to force delete."
+    fi
   fi
-
-  git -C "$bare_repo" branch -D "$branch" 2>/dev/null
 }
 
 # -----------------------------------------------------------------------------
@@ -445,6 +462,11 @@ _wt_share() {
         read -r choice
       fi
 
+      if [[ ! "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#sources[@]} )); then
+        echo "Error: invalid selection '$choice'"
+        return 1
+      fi
+
       mkdir -p "$(dirname "$shared_file")"
       mv "${sources[$choice]}" "$shared_file"
       echo "Moved ${sources[$choice]} -> $shared_file"
@@ -502,7 +524,11 @@ _wt_unshare() {
   fi
   local wtshared="$CODE_DIR/$repo/.wtshared"
   if [[ -f "$wtshared" ]]; then
-    sed -i '' "/^${file//\//\\/}$/d" "$wtshared"
+    if [[ "$(uname)" == "Darwin" ]]; then
+      sed -i '' "/^${file//\//\\/}$/d" "$wtshared"
+    else
+      sed -i "/^${file//\//\\/}$/d" "$wtshared"
+    fi
     echo "Removed $file from shared list (symlinks remain)"
   fi
 }
@@ -513,13 +539,13 @@ _wt_unshare() {
 # Print help for all worktree helper commands.
 # -----------------------------------------------------------------------------
 _wt_help() {
-  cat <<'EOF'
+  cat <<EOF
 Git Worktree Helpers
 ====================
 
 Directory layout:
-  ~/code/.bare/<repo>.git    Bare repositories
-  ~/code/<repo>/<branch>/    Worktree directories
+  $CODE_DIR/.bare/<repo>.git    Bare repositories
+  $CODE_DIR/<repo>/<branch>/    Worktree directories
 
 Commands:
 
