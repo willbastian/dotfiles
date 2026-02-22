@@ -21,14 +21,35 @@ source ~/path/to/dotfiles/zsh/.worktree-helpers.zsh
 
 Shell functions for managing git worktrees with bare repositories. Provides the `wt` command.
 
+### The idea
+
+With normal git, you have one working directory and switch between branches with `git checkout`. With worktrees, each branch gets its own directory. `wt` takes this further: **branches are directories, and directories are branches**. Your filesystem becomes the map of what you're working on.
+
+This means:
+- No stashing or committing half-done work to switch context
+- Run tests on one branch while editing another
+- See all your active work at a glance with `ls` or `wt ls`
+- Remove a branch by removing its directory
+
 ### Directory layout
 
 ```
-$CODE_DIR/.bare/<repo>.git    Bare repositories
-$CODE_DIR/<repo>/<branch>/    Worktree directories
+$CODE_DIR/
+  .bare/
+    api.git/                  # bare repo (no working files, just git data)
+    web.git/
+  api/
+    main/                     # ← each branch is a directory
+    feature-auth/
+    fix-pagination/
+  web/
+    main/
+    redesign/
 ```
 
 `CODE_DIR` defaults to `~/code` and can be overridden before sourcing.
+
+Bare repos live in `.bare/` — they hold the git objects and refs but no working files. Each worktree under `$CODE_DIR/<repo>/` is a full checkout of a single branch, sharing the same git history. Creating a worktree is fast (no re-clone) and cheap on disk (git shares objects across worktrees).
 
 ### Commands
 
