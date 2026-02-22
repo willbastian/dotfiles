@@ -15,11 +15,9 @@ source ~/path/to/dotfiles/zsh/.worktree-helpers.zsh
 
 ### Dependencies
 
-- [fzf](https://github.com/junegunn/fzf) — used for interactive worktree selection in `wt ls` and `wt rm`
+- [fzf](https://github.com/junegunn/fzf) (optional) — enables interactive worktree selection in `wt ls` and multi-select removal in `wt rm`. Without it, these commands fall back to plain list output.
 
 ## Worktree Helpers
-
-Shell functions for managing git worktrees with bare repositories. Provides the `wt` command.
 
 ### The idea
 
@@ -28,8 +26,8 @@ With normal git, you have one working directory and switch between branches with
 This means:
 - No stashing or committing half-done work to switch context
 - Run tests on one branch while editing another
-- See all your active work at a glance with `ls` or `wt ls`
-- Remove a branch by removing its directory
+- See all your active work at a glance with `wt ls`
+- Clean up a branch and its worktree in one step with `wt rm`
 
 ### Directory layout
 
@@ -74,7 +72,7 @@ wt bare git@github.com:acme/api.git
 wt add api feature-auth
 
 # You're now cd'd into ~/code/api/feature-auth — do your work
-git commit -am "add auth middleware"
+git add -p && git commit -m "add auth middleware"
 git push
 
 # Switch to another worktree (interactive picker)
